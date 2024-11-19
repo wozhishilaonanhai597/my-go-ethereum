@@ -1972,3 +1972,126 @@ func checkTxFee(gasPrice *big.Int, gas uint64, cap float64) error {
 	}
 	return nil
 }
+
+// EstimateGasBundleArgs represents the arguments for a call
+type EstimateGasBundleArgs struct {
+	Txs                    []TransactionArgs     `json:"txs"`
+	BlockNumber            rpc.BlockNumber       `json:"blockNumber"`
+	StateBlockNumberOrHash rpc.BlockNumberOrHash `json:"stateBlockNumber"`
+	Coinbase               *string               `json:"coinbase"`
+	Timestamp              *uint64               `json:"timestamp"`
+	Timeout                *int64                `json:"timeout"`
+}
+
+type BundleAPI struct {
+	b     Backend
+	chain *core.BlockChain
+}
+
+// NewBundleAPI creates a new Tx Bundle API instance.
+func NewBundleAPI(b Backend, chain *core.BlockChain) *BundleAPI {
+	return &BundleAPI{b, chain}
+}
+
+func (s *BundleAPI) EstimateGasBundle(ctx context.Context, args EstimateGasBundleArgs) ([]map[string]interface{}, error) {
+	if len(args.Txs) == 0 {
+		return nil, errors.New("bundle missing txs")
+	}
+	if args.BlockNumber == 0 {
+		return nil, errors.New("bundle missing blockNumber")
+	}
+
+	timeoutMS := int64(5000)
+	if args.Timeout != nil {
+		timeoutMS = *args.Timeout
+	}
+	timeout := time.Millisecond * time.Duration(timeoutMS)
+
+	// Setup context so it may be cancelled when the call
+	// has completed or, in case of unmetered gas, setup
+	// a context with a timeout
+	var cancel context.CancelFunc
+	if timeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+	} else {
+		ctx, cancel = context.WithCancel(ctx)
+	}
+
+	// Make sure the context is cancelled when the call has completed
+	// This makes sure resources are cleaned up
+	defer cancel()
+
+	inState, header, err := s.b.StateAndHeaderByNumberOrHash(ctx, args.StateBlockNumberOrHash)
+
+	if inState == nil || err != nil {
+		return nil, err
+	}
+	blockNumber := big.NewInt(int64(args.BlockNumber))
+	coinbase := header.Coinbase
+	if args.Coinbase != nil {
+		coinbase = common.HexToAddress(*args.Coinbase)
+	}
+
+	// Results
+	var results []map[string]interface{}
+
+	// Copy the original db so we don't modify it
+	statedb := inState.Copy()
+
+	// Gas pool
+	gp := new(core.GasPool).AddGas(gomath.MaxUint64)
+
+	// Block context
+	var newHeader = types.CopyHeader(header)
+	newHeader.Time = header.Time + 3
+	newHeader.Number.Add(header.Number, common.Big1)
+	if args.Coinbase != nil {
+		newHeader.Coinbase = common.HexToAddress(*args.Coinbase)
+	}
+	blockContext := core.NewEVMBlockContext(newHeader, s.chain, &coinbase)
+
+	// Feed each of the transactions into the VM ctx
+	// And try and estimate the gas used
+	for _, txArgs := range args.Txs {
+		// Check if the context was cancelled (eg. timed-out)
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+
+		// Convert tx args to msg to apply state transition
+		msg := txArgs.ToMessage(header.BaseFee, true, true)
+
+		rules := s.chain.Config().Rules(header.Number, blockContext.Random != nil, header.Time)
+		// New random hash since its a call
+		statedb.Prepare(rules, msg.From, header.Coinbase, msg.To, vm.ActivePrecompiles(rules), msg.AccessList)
+
+		// Prepare the hashes
+		txContext := core.NewEVMTxContext(msg)
+
+		// Get EVM Environment
+		vmenv := vm.NewEVM(blockContext, txContext, statedb, s.b.ChainConfig(), vm.Config{NoBaseFee: true})
+
+		// Apply state transition
+		result, err := core.ApplyMessage(vmenv, msg, gp)
+		if vmerr := statedb.Error(); vmerr != nil {
+			return nil, vmerr
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		// Modifications are committed to the state
+		// Only delete empty objects if EIP158/161 (a.k.a Spurious Dragon) is in effect
+		statedb.Finalise(vmenv.ChainConfig().IsEIP158(blockNumber))
+
+		optimisticGasLimit := (result.UsedGas + params.CallStipend) * 64 / 63
+		// Append result
+		jsonResult := map[string]interface{}{
+			"failed":  result.Failed(),
+			"gasUsed": optimisticGasLimit,
+		}
+		results = append(results, jsonResult)
+	}
+
+	return results, nil
+}
