@@ -18,6 +18,7 @@ package ethapi
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -2022,22 +2023,35 @@ func (s *BundleAPI) EstimateGasBundle(ctx context.Context, args EstimateGasBundl
 	// This makes sure resources are cleaned up
 	defer cancel()
 
-	inState, header, err := s.b.StateAndHeaderByNumberOrHash(ctx, args.StateBlockNumberOrHash)
-
-	if inState == nil || err != nil {
+	state, parent, err := s.b.StateAndHeaderByNumberOrHash(ctx, args.StateBlockNumberOrHash)
+	if state == nil || err != nil {
 		return nil, err
 	}
 	blockNumber := big.NewInt(int64(args.BlockNumber))
-	coinbase := header.Coinbase
+	timestamp := parent.Time + 1
+	if args.Timestamp != nil {
+		timestamp = *args.Timestamp
+	}
+	coinbase := parent.Coinbase
 	if args.Coinbase != nil {
 		coinbase = common.HexToAddress(*args.Coinbase)
 	}
 
+	header := &types.Header{
+		ParentHash: parent.Hash(),
+		Number:     blockNumber,
+		GasLimit:   parent.GasLimit,
+		Time:       timestamp,
+		Difficulty: parent.Difficulty,
+		Coinbase:   coinbase,
+		BaseFee:    parent.BaseFee,
+	}
+
 	// Results
-	var results []map[string]interface{}
+	results := []map[string]interface{}{}
 
 	// Copy the original db so we don't modify it
-	statedb := inState.Copy()
+	statedb := state.Copy()
 
 	// Gas pool
 	gp := new(core.GasPool).AddGas(gomath.MaxUint64)
@@ -2059,6 +2073,11 @@ func (s *BundleAPI) EstimateGasBundle(ctx context.Context, args EstimateGasBundl
 			return nil, err
 		}
 
+		// Since its a txCall we'll just prepare the
+		// state with a random hash
+		var randomHash common.Hash
+		rand.Read(randomHash[:])
+
 		// Convert tx args to msg to apply state transition
 		msg := txArgs.ToMessage(header.BaseFee, true, true)
 
@@ -2074,9 +2093,6 @@ func (s *BundleAPI) EstimateGasBundle(ctx context.Context, args EstimateGasBundl
 
 		// Apply state transition
 		result, err := core.ApplyMessage(vmenv, msg, gp)
-		if vmerr := statedb.Error(); vmerr != nil {
-			return nil, vmerr
-		}
 		if err != nil {
 			return nil, err
 		}
@@ -2085,6 +2101,7 @@ func (s *BundleAPI) EstimateGasBundle(ctx context.Context, args EstimateGasBundl
 		// Only delete empty objects if EIP158/161 (a.k.a Spurious Dragon) is in effect
 		statedb.Finalise(vmenv.ChainConfig().IsEIP158(blockNumber))
 
+		// Append result
 		optimisticGasLimit := (result.UsedGas + params.CallStipend) * 64 / 63
 		// Append result
 		jsonResult := map[string]interface{}{
