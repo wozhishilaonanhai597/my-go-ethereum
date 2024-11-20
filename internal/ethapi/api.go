@@ -717,6 +717,7 @@ type BlockOverrides struct {
 	Difficulty    *hexutil.Big // No-op if we're simulating post-merge calls.
 	Time          *hexutil.Uint64
 	GasLimit      *hexutil.Uint64
+	Coinbase      *common.Address
 	FeeRecipient  *common.Address
 	PrevRandao    *common.Hash
 	BaseFeePerGas *hexutil.Big
