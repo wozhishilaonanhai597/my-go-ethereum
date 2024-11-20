@@ -2044,7 +2044,7 @@ func (s *BundleAPI) EstimateGasBundle(ctx context.Context, args EstimateGasBundl
 
 	// Block context
 	var newHeader = types.CopyHeader(header)
-	newHeader.Time = header.Time + 3
+	newHeader.Time = header.Time + 13
 	newHeader.Number.Add(header.Number, common.Big1)
 	if args.Coinbase != nil {
 		newHeader.Coinbase = common.HexToAddress(*args.Coinbase)
