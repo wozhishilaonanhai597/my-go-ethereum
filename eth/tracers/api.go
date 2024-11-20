@@ -968,7 +968,7 @@ func (api *API) TraceCall(ctx context.Context, args ethapi.TransactionArgs, bloc
 		author = customConfig.BlockOverrides.Coinbase
 	}
 
-	vmctx := core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), author)
+	vmctx := core.NewEVMBlockContext(nextBlockHead, api.chainContext(ctx), author)
 	// Apply the customization rules if required.
 	if config != nil {
 		config.BlockOverrides.Apply(&vmctx)
