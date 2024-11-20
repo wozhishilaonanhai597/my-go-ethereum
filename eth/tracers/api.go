@@ -168,6 +168,10 @@ type TraceCallConfig struct {
 	TxIndex        *hexutil.Uint
 }
 
+type CustomTraceCallConfig struct {
+	BlockOverrides *ethapi.BlockOverrides
+}
+
 // StdTraceConfig holds extra parameters to standard-json trace functions.
 type StdTraceConfig struct {
 	logger.Config
@@ -913,7 +917,7 @@ func (api *API) TraceTransaction(ctx context.Context, hash common.Hash, config *
 // after executing the specified block. However, if a transaction index is provided,
 // the trace will be conducted on the state after executing the specified transaction
 // within the specified block.
-func (api *API) TraceCall(ctx context.Context, args ethapi.TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, config *TraceCallConfig) (interface{}, error) {
+func (api *API) TraceCall(ctx context.Context, args ethapi.TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, config *TraceCallConfig, customConfig *CustomTraceCallConfig) (interface{}, error) {
 	// Try to retrieve the specified block
 	var (
 		err     error
@@ -955,7 +959,16 @@ func (api *API) TraceCall(ctx context.Context, args ethapi.TransactionArgs, bloc
 	}
 	defer release()
 
-	vmctx := core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil)
+	var nextBlockHead = block.Header()
+	nextBlockHead.Time = block.Time() + 13
+	nextBlockHead.Number.Add(block.Number(), common.Big1)
+	var author *common.Address = nil
+	if customConfig != nil && customConfig.BlockOverrides != nil && customConfig.BlockOverrides.Coinbase != nil {
+		nextBlockHead.Coinbase = *customConfig.BlockOverrides.Coinbase
+		author = customConfig.BlockOverrides.Coinbase
+	}
+
+	vmctx := core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), author)
 	// Apply the customization rules if required.
 	if config != nil {
 		config.BlockOverrides.Apply(&vmctx)
