@@ -2023,12 +2023,12 @@ func (s *BundleAPI) EstimateGasBundle(ctx context.Context, args EstimateGasBundl
 	// This makes sure resources are cleaned up
 	defer cancel()
 
-	state, parent, err := s.b.StateAndHeaderByNumberOrHash(ctx, args.StateBlockNumberOrHash)
-	if state == nil || err != nil {
+	_state, parent, err := s.b.StateAndHeaderByNumberOrHash(ctx, args.StateBlockNumberOrHash)
+	if _state == nil || err != nil {
 		return nil, err
 	}
 	blockNumber := big.NewInt(int64(args.BlockNumber))
-	timestamp := parent.Time + 1
+	timestamp := parent.Time
 	if args.Timestamp != nil {
 		timestamp = *args.Timestamp
 	}
@@ -2051,14 +2051,14 @@ func (s *BundleAPI) EstimateGasBundle(ctx context.Context, args EstimateGasBundl
 	results := []map[string]interface{}{}
 
 	// Copy the original db so we don't modify it
-	statedb := state.Copy()
+	statedb := _state.Copy()
 
 	// Gas pool
 	gp := new(core.GasPool).AddGas(gomath.MaxUint64)
 
 	// Block context
 	var newHeader = types.CopyHeader(header)
-	newHeader.Time = header.Time + 13
+	newHeader.Time = parent.Time + 13
 	newHeader.Number.Add(header.Number, common.Big1)
 	if args.Coinbase != nil {
 		newHeader.Coinbase = common.HexToAddress(*args.Coinbase)
@@ -2077,6 +2077,10 @@ func (s *BundleAPI) EstimateGasBundle(ctx context.Context, args EstimateGasBundl
 		// state with a random hash
 		var randomHash common.Hash
 		rand.Read(randomHash[:])
+
+		if txArgs.Gas == nil {
+			txArgs.Gas = new(hexutil.Uint64)
+		}
 
 		// Convert tx args to msg to apply state transition
 		msg := txArgs.ToMessage(header.BaseFee, true, true)
