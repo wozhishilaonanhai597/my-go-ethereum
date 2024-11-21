@@ -2097,6 +2097,13 @@ func (s *BundleAPI) EstimateGasBundle(ctx context.Context, args EstimateGasBundl
 		// Prepare the hashes
 		txContext := core.NewEVMTxContext(msg)
 
+		if txContext.GasPrice.Sign() == 0 {
+			blockContext.BaseFee = new(big.Int)
+		}
+		if txContext.BlobFeeCap != nil && txContext.BlobFeeCap.BitLen() == 0 {
+			blockContext.BlobBaseFee = new(big.Int)
+		}
+
 		// Get EVM Environment
 		vmenv := vm.NewEVM(blockContext, txContext, statedb, s.b.ChainConfig(), vm.Config{NoBaseFee: true})
 
