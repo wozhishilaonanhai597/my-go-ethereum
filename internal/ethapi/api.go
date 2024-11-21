@@ -2047,6 +2047,8 @@ func (s *BundleAPI) EstimateGasBundle(ctx context.Context, args EstimateGasBundl
 		BaseFee:    parent.BaseFee,
 	}
 
+	globalGasCap := s.b.RPCGasCap()
+
 	// Results
 	results := []map[string]interface{}{}
 
@@ -2082,6 +2084,9 @@ func (s *BundleAPI) EstimateGasBundle(ctx context.Context, args EstimateGasBundl
 			txArgs.Gas = new(hexutil.Uint64)
 		}
 
+		if err := txArgs.CallDefaults(globalGasCap, header.BaseFee, s.b.ChainConfig().ChainID); err != nil {
+			return nil, err
+		}
 		// Convert tx args to msg to apply state transition
 		msg := txArgs.ToMessage(header.BaseFee, true, true)
 
