@@ -2083,7 +2083,7 @@ func (s *BundleAPI) EstimateGasBundle(ctx context.Context, args EstimateGasBundl
 		}
 		// Convert tx args to msg to apply state transition
 		msg := txArgs.ToMessage(header.BaseFee, true, true)
-
+		msg.GasLimit = globalGasCap
 		//rules := s.chain.Config().Rules(header.Number, blockContext.Random != nil, header.Time)
 		// New random hash since its a call
 		//statedb.Prepare(rules, msg.From, header.Coinbase, msg.To, vm.ActivePrecompiles(rules), msg.AccessList)
