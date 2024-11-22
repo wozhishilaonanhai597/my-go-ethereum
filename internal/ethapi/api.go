@@ -2112,11 +2112,11 @@ func (s *BundleAPI) EstimateGasBundle(ctx context.Context, args EstimateGasBundl
 		statedb.Finalise(vmenv.ChainConfig().IsEIP158(blockNumber))
 
 		// Append result
-		optimisticGasLimit := (result.UsedGas + params.CallStipend) * 64 / 63
+		//optimisticGasLimit := (result.UsedGas + params.CallStipend) * 64 / 63
 		// Append result
 		jsonResult := map[string]interface{}{
 			"failed":  result.Failed(),
-			"gasUsed": optimisticGasLimit,
+			"gasUsed": result.UsedGas,
 		}
 		results = append(results, jsonResult)
 	}
