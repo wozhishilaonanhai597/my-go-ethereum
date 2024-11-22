@@ -2023,29 +2023,23 @@ func (s *BundleAPI) EstimateGasBundle(ctx context.Context, args EstimateGasBundl
 	// This makes sure resources are cleaned up
 	defer cancel()
 
-	_state, parent, err := s.b.StateAndHeaderByNumberOrHash(ctx, args.StateBlockNumberOrHash)
+	_state, header, err := s.b.StateAndHeaderByNumberOrHash(ctx, args.StateBlockNumberOrHash)
 	if _state == nil || err != nil {
 		return nil, err
 	}
 	blockNumber := big.NewInt(int64(args.BlockNumber))
-	timestamp := parent.Time
+	timestamp := header.Time
 	if args.Timestamp != nil {
 		timestamp = *args.Timestamp
 	}
-	coinbase := parent.Coinbase
+	coinbase := header.Coinbase
 	if args.Coinbase != nil {
 		coinbase = common.HexToAddress(*args.Coinbase)
 	}
 
-	header := &types.Header{
-		ParentHash: parent.Hash(),
-		Number:     blockNumber,
-		GasLimit:   parent.GasLimit,
-		Time:       timestamp,
-		Difficulty: parent.Difficulty,
-		Coinbase:   coinbase,
-		BaseFee:    parent.BaseFee,
-	}
+	header.Coinbase = coinbase
+	header.Number = blockNumber
+	header.Time = timestamp
 
 	globalGasCap := s.b.RPCGasCap()
 
@@ -2060,7 +2054,7 @@ func (s *BundleAPI) EstimateGasBundle(ctx context.Context, args EstimateGasBundl
 
 	// Block context
 	var newHeader = types.CopyHeader(header)
-	newHeader.Time = parent.Time + 13
+	newHeader.Time = header.Time + 13
 	newHeader.Number.Add(header.Number, common.Big1)
 	if args.Coinbase != nil {
 		newHeader.Coinbase = common.HexToAddress(*args.Coinbase)
@@ -2090,9 +2084,9 @@ func (s *BundleAPI) EstimateGasBundle(ctx context.Context, args EstimateGasBundl
 		// Convert tx args to msg to apply state transition
 		msg := txArgs.ToMessage(header.BaseFee, true, true)
 
-		rules := s.chain.Config().Rules(header.Number, blockContext.Random != nil, header.Time)
+		//rules := s.chain.Config().Rules(header.Number, blockContext.Random != nil, header.Time)
 		// New random hash since its a call
-		statedb.Prepare(rules, msg.From, header.Coinbase, msg.To, vm.ActivePrecompiles(rules), msg.AccessList)
+		//statedb.Prepare(rules, msg.From, header.Coinbase, msg.To, vm.ActivePrecompiles(rules), msg.AccessList)
 
 		// Prepare the hashes
 		txContext := core.NewEVMTxContext(msg)
